@@ -562,32 +562,6 @@
 
   .btn-action.primary:hover, .btn-action.primary:active { background: #d93525; }
 
-  /* ── NOTES ── */
-  .notes-area { margin-top: 24px; }
-
-  .notes-area label {
-    display: block;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 6px;
-  }
-
-  .notes-area textarea {
-    width: 100%;
-    background: var(--charcoal);
-    border: 1px solid var(--border);
-    color: var(--white);
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 13px;
-    padding: 12px 14px;
-    resize: vertical;
-    min-height: 70px;
-    outline: none;
-  }
-
   /* ── MOBILE STICKY ACTION BAR ── */
   .mobile-action-bar { display: none; }
 
@@ -697,8 +671,6 @@
     .week-day input { font-size: 14px !important; }
     .card-head .card-desc { font-size: 16px !important; }
 
-    .notes-area { margin-top: 14px; }
-    .notes-area textarea { font-size: 14px; }
   }
 
   /* very small phones */
@@ -822,12 +794,6 @@
       <div class="t-label">Est. Weekly Total</div>
       <div class="t-value" id="grand-total">$0.00</div>
     </div>
-  </div>
-
-  <!-- Notes -->
-  <div class="notes-area">
-    <label>Notes</label>
-    <textarea id="notes" placeholder="* Outside rental weekly cost includes a 10% markup for sales tax. Rate is calculated using the estimated release date to determine length of rent."></textarea>
   </div>
 
   <!-- Desktop Actions -->
@@ -1285,7 +1251,6 @@ function readMetaInputs() {
     project: document.getElementById('project').value,
     reportNum: document.getElementById('report-num').value,
     super: document.getElementById('super').value,
-    notes: document.getElementById('notes').value,
   };
 }
 
@@ -1293,7 +1258,6 @@ function applyMetaToInputs() {
   document.getElementById('project').value = store.meta.project || '';
   document.getElementById('report-num').value = store.meta.reportNum || '';
   document.getElementById('super').value = store.meta.super || '';
-  document.getElementById('notes').value = store.meta.notes || '';
 }
 
 function saveData() {
@@ -1465,7 +1429,7 @@ function clearAll() {
 }
 
 // bind meta inputs to save
-['project','report-num','super','notes'].forEach(id => {
+['project','report-num','super'].forEach(id => {
   document.getElementById(id).addEventListener('input', saveData);
 });
 
