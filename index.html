@@ -1433,7 +1433,7 @@ setInterval(() => {
   if (pendingSave || saveTimer !== null) return;
   if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
   cloudRefresh();
-}, 120000);
+}, 30000);
 
 function clearAll() {
   if (!confirm('Clear all equipment entries for this week?')) return;
