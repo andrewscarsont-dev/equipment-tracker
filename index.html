@@ -731,13 +731,22 @@
     .equip-table tbody tr:hover { background: transparent; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+
+  .sync-pill { font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:3px 9px; border:1px solid; }
+  .sync-pill.loading { color:var(--muted); border-color:var(--border); }
+  .sync-pill.saving  { color:var(--accent); border-color:var(--accent-dim); }
+  .sync-pill.saved   { color:var(--green);  border-color:rgba(39,174,96,0.35); }
+  .sync-pill.error   { color:var(--red);    border-color:rgba(192,57,43,0.35); }
 </style>
 </head>
 <body>
 
 <div class="app-header">
   <h1>⬛ Equipment Report</h1>
-  <span class="meta" id="live-clock"></span>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span id="sync-pill" class="sync-pill loading">Loading</span>
+    <span class="meta" id="live-clock"></span>
+  </div>
 </div>
 
 <div class="container">
@@ -1290,7 +1299,7 @@ function applyMetaToInputs() {
 function saveData() {
   readMetaInputs();
   persistCurrentWeek();
-  try { localStorage.setItem('equip_report_v2', JSON.stringify(store)); } catch(e) {}
+  scheduleCloudSave();
 }
 
 function sanitizeRow(r) {
@@ -1308,47 +1317,144 @@ function sanitizeRow(r) {
   };
 }
 
-function loadData() {
+// ── Cloud sync ──
+let saveTimer = null;
+let pendingSave = false;
+
+function setSyncStatus(status) {
+  const pill = document.getElementById('sync-pill');
+  if (!pill) return;
+  pill.className = 'sync-pill ' + status;
+  pill.textContent = { loading:'Loading', saving:'Saving…', saved:'Saved', error:'Error' }[status] ?? status;
+}
+
+function scheduleCloudSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { saveTimer = null; cloudSave(); }, 1500);
+}
+
+async function cloudSave() {
+  pendingSave = true;
+  setSyncStatus('saving');
   try {
-    // Try v2 first
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(store)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    setSyncStatus('saved');
+  } catch(e) {
+    setSyncStatus('error');
+  } finally {
+    pendingSave = false;
+  }
+}
+
+function applyCloudData(data) {
+  store.meta = data.meta || { project:'', reportNum:'', super:'', notes:'' };
+  store.weeks = {};
+  if (data.weeks && typeof data.weeks === 'object') {
+    Object.keys(data.weeks).forEach(wk => {
+      const w = data.weeks[wk];
+      store.weeks[wk] = { rows: Array.isArray(w.rows) ? w.rows.map(sanitizeRow) : [] };
+    });
+  }
+  store.currentWeek = data.currentWeek && store.weeks[data.currentWeek]
+    ? data.currentWeek
+    : (Object.keys(store.weeks).sort().reverse()[0] || defaultWeekEnd());
+  if (!store.weeks[store.currentWeek]) store.weeks[store.currentWeek] = { rows: [] };
+  rows = store.weeks[store.currentWeek].rows;
+}
+
+function migrateLocalStorage() {
+  try {
     const rawV2 = localStorage.getItem('equip_report_v2');
     if (rawV2) {
-      const data = JSON.parse(rawV2);
-      store.meta = data.meta || { project:'', reportNum:'', super:'', notes:'' };
-      store.weeks = {};
-      if (data.weeks && typeof data.weeks === 'object') {
-        Object.keys(data.weeks).forEach(wk => {
-          const w = data.weeks[wk];
-          store.weeks[wk] = {
-            rows: Array.isArray(w.rows) ? w.rows.map(sanitizeRow) : []
-          };
-        });
-      }
-      store.currentWeek = data.currentWeek && store.weeks[data.currentWeek]
-        ? data.currentWeek
-        : (Object.keys(store.weeks).sort().reverse()[0] || defaultWeekEnd());
-      return;
+      applyCloudData(JSON.parse(rawV2));
+      localStorage.removeItem('equip_report_v2');
+      localStorage.removeItem('equip_report');
+      return true;
     }
-
-    // Migrate v1 if present
     const rawV1 = localStorage.getItem('equip_report');
     if (rawV1) {
       const data = JSON.parse(rawV1);
       const m = data.meta || {};
-      store.meta = {
-        project: m.project || '',
-        reportNum: m.reportNum || '',
-        super: m.super || '',
-        notes: m.notes || ''
-      };
+      store.meta = { project:m.project||'', reportNum:m.reportNum||'', super:m.super||'', notes:m.notes||'' };
       const wk = m.weekEnd || defaultWeekEnd();
-      const sanitizedRows = Array.isArray(data.rows) ? data.rows.map(sanitizeRow) : [];
-      store.weeks = { [wk]: { rows: sanitizedRows } };
+      store.weeks = { [wk]: { rows: Array.isArray(data.rows) ? data.rows.map(sanitizeRow) : [] } };
       store.currentWeek = wk;
-      return;
+      rows = store.weeks[wk].rows;
+      localStorage.removeItem('equip_report');
+      return true;
     }
   } catch(e) {}
+  return false;
 }
+
+async function cloudLoad() {
+  setSyncStatus('loading');
+  let hadData = false;
+  let shouldUpload = false;
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data) {
+      applyCloudData(data);
+      hadData = true;
+    } else {
+      shouldUpload = migrateLocalStorage();
+      if (shouldUpload) {
+        hadData = true;
+      } else {
+        store.currentWeek = defaultWeekEnd();
+        store.weeks[store.currentWeek] = { rows: [] };
+        rows = store.weeks[store.currentWeek].rows;
+      }
+    }
+    setSyncStatus(shouldUpload ? 'saving' : 'saved');
+  } catch(e) {
+    setSyncStatus('error');
+    hadData = true; // avoid seeding on error
+  }
+  applyMetaToInputs();
+  rebuildWeekDropdown();
+  setWeekDates(store.currentWeek);
+  renderRows();
+  if (shouldUpload) await cloudSave();
+  return hadData;
+}
+
+async function cloudRefresh() {
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data) return;
+    const activeWeek = store.currentWeek;
+    if (data.meta) store.meta = data.meta;
+    if (data.weeks) {
+      Object.keys(data.weeks).forEach(wk => {
+        const w = data.weeks[wk];
+        store.weeks[wk] = { rows: Array.isArray(w.rows) ? w.rows.map(sanitizeRow) : [] };
+      });
+    }
+    if (!store.weeks[activeWeek]) store.weeks[activeWeek] = { rows: [] };
+    rows = store.weeks[activeWeek].rows;
+    applyMetaToInputs();
+    rebuildWeekDropdown();
+    setWeekDates(activeWeek);
+    renderRows();
+    setSyncStatus('saved');
+  } catch(e) {}
+}
+
+setInterval(() => {
+  if (pendingSave || saveTimer !== null) return;
+  if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  cloudRefresh();
+}, 30000);
 
 function clearAll() {
   if (!confirm('Clear all equipment entries for this week?')) return;
@@ -1368,33 +1474,23 @@ function esc(s) {
 }
 
 // ── Init ──
-loadData();
-
-// If nothing loaded, bootstrap a fresh store
-if (!store.currentWeek) {
+(async () => {
   store.currentWeek = defaultWeekEnd();
-}
-if (!store.weeks[store.currentWeek]) {
   store.weeks[store.currentWeek] = { rows: [] };
-}
-rows = store.weeks[store.currentWeek].rows;
-
-applyMetaToInputs();
-rebuildWeekDropdown();
-setWeekDates(store.currentWeek);
-
-if (rows.length === 0 && Object.keys(store.weeks).length === 1) {
-  // first-run seed (only on fresh install, not when migrating)
-  addRow({
-    id: Date.now(),
-    desc: '20KW GENERATOR', equip: '217815', company: 'SUN',
-    start: '2026-05-01', release: '2026-05-08',
-    days: [false,false,false,false,false,false,false],
-    startHrs: '', endHrs: '', cost: '278.14'
-  });
-} else {
-  renderRows();
-}
+  rows = store.weeks[store.currentWeek].rows;
+  rebuildWeekDropdown();
+  setWeekDates(store.currentWeek);
+  const hadData = await cloudLoad();
+  if (!hadData) {
+    addRow({
+      id: Date.now(),
+      desc: '20KW GENERATOR', equip: '217815', company: 'SUN',
+      start: '2026-05-01', release: '2026-05-08',
+      days: [false,false,false,false,false,false,false],
+      startHrs: '', endHrs: '', cost: '278.14'
+    });
+  }
+})();
 </script>
 </body>
 </html>
