@@ -1328,6 +1328,17 @@ function applyCloudData(data) {
     ? data.currentWeek
     : (Object.keys(store.weeks).sort().reverse()[0] || defaultWeekEnd());
   if (!store.weeks[store.currentWeek]) store.weeks[store.currentWeek] = { rows: [] };
+  // Auto-advance: if the stored week is in the past, jump to the current week with carry-over
+  const thisWeek = defaultWeekEnd();
+  if (store.currentWeek < thisWeek) {
+    if (!store.weeks[thisWeek] || !store.weeks[thisWeek].rows?.length) {
+      const priorIso = findMostRecentPriorWeekWithData(thisWeek);
+      store.weeks[thisWeek] = priorIso
+        ? { rows: carryRows(store.weeks[priorIso].rows) }
+        : { rows: [] };
+    }
+    store.currentWeek = thisWeek;
+  }
   rows = store.weeks[store.currentWeek].rows;
 }
 
@@ -1365,8 +1376,10 @@ async function cloudLoad() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data) {
+      const cloudWeek = data.currentWeek;
       applyCloudData(data);
       hadData = true;
+      if (store.currentWeek !== cloudWeek) shouldUpload = true;
     } else {
       shouldUpload = migrateLocalStorage();
       if (shouldUpload) {
