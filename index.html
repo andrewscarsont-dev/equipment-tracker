@@ -860,12 +860,13 @@ let store = {
 };
 
 function isoSaturdayForDate(d) {
-  // Returns YYYY-MM-DD of the Saturday in the same week (Mon-Sun) as d.
-  // We treat Saturday as week-ending (matches existing default).
   const day = d.getDay(); // 0=Sun, 6=Sat
   const sat = new Date(d);
   sat.setDate(d.getDate() + (6 - day));
-  return sat.toISOString().split('T')[0];
+  const y = sat.getFullYear();
+  const m = String(sat.getMonth() + 1).padStart(2, '0');
+  const dd = String(sat.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function defaultWeekEnd() {
