@@ -1116,29 +1116,27 @@ function propagateForward(fromIso) {
   let sourceRows = store.weeks[fromIso].rows;
   for (const weekIso of futureWeeks) {
     const futureRows = store.weeks[weekIso].rows || [];
-    const futureByEquip = new Map(futureRows.filter(r => r.equip).map(r => [r.equip, r]));
-    const matchedFutureIds = new Set();
+    const matchedSourceIds = new Set();
+    const result = [];
 
     // Update existing future rows — match by originId first, fall back to equip number
-    const updatedRows = futureRows.map(futureRow => {
+    for (const futureRow of futureRows) {
       const foid = futureRow.originId || futureRow.id;
       let srcRow = sourceRows.find(r => (r.originId || r.id) === foid);
       if (!srcRow && futureRow.equip) srcRow = sourceRows.find(r => r.equip && r.equip === futureRow.equip);
-      if (!srcRow) return futureRow; // independently added — leave untouched
+      if (!srcRow) { result.push(futureRow); continue; }
       const oid = srcRow.originId || srcRow.id;
-      matchedFutureIds.add(foid);
-      return { ...futureRow, originId: oid, desc: srcRow.desc, equip: srcRow.equip,
+      matchedSourceIds.add(oid);
+      result.push({ ...futureRow, originId: oid, desc: srcRow.desc, equip: srcRow.equip,
         company: srcRow.company, start: srcRow.start, release: srcRow.release, cost: srcRow.cost,
-        startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : futureRow.startHrs };
-    });
+        startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : futureRow.startHrs });
+    }
 
-    // Add source rows with no originId or equip match in this future week
+    // Add source rows that had no match in this future week
     for (const srcRow of sourceRows) {
       const oid = srcRow.originId || srcRow.id;
-      const matchedByOrigin = futureRows.some(r => (r.originId || r.id) === oid);
-      const matchedByEquip = srcRow.equip && futureByEquip.has(srcRow.equip);
-      if (matchedByOrigin || matchedByEquip) continue;
-      updatedRows.push({
+      if (matchedSourceIds.has(oid)) continue;
+      result.push({
         id: Date.now() + Math.random(), originId: oid,
         desc: srcRow.desc || '', equip: srcRow.equip || '',
         company: srcRow.company || '', start: srcRow.start || '', release: srcRow.release || '',
@@ -1148,8 +1146,8 @@ function propagateForward(fromIso) {
       });
     }
 
-    store.weeks[weekIso] = { rows: updatedRows };
-    sourceRows = updatedRows;
+    store.weeks[weekIso] = { rows: result };
+    sourceRows = result;
   }
 }
 
