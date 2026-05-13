@@ -1117,30 +1117,35 @@ function propagateForward(fromIso) {
   for (const weekIso of futureWeeks) {
     const futureRows = store.weeks[weekIso].rows || [];
     const futureByOrigin = new Map(futureRows.map(r => [r.originId || r.id, r]));
-    const newRows = sourceRows.map(srcRow => {
+
+    // Update existing future rows that match a source row by originId
+    const updatedRows = futureRows.map(futureRow => {
+      const oid = futureRow.originId || futureRow.id;
+      const srcRow = sourceRows.find(r => (r.originId || r.id) === oid);
+      if (!srcRow) return futureRow; // independently added — leave untouched
+      return { ...futureRow, originId: oid, desc: srcRow.desc, equip: srcRow.equip,
+        company: srcRow.company, start: srcRow.start, release: srcRow.release, cost: srcRow.cost,
+        startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : futureRow.startHrs };
+    });
+
+    // Add source rows that don't exist in this future week yet
+    for (const srcRow of sourceRows) {
       const oid = srcRow.originId || srcRow.id;
-      const existing = futureByOrigin.get(oid);
-      if (existing) {
-        return { ...existing, originId: oid, desc: srcRow.desc, equip: srcRow.equip,
-          company: srcRow.company, start: srcRow.start, release: srcRow.release, cost: srcRow.cost,
-          startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : existing.startHrs };
-      } else {
-        // skip if a different row in this future week already claims this equip number
-        if (srcRow.equip && futureRows.some(r => r.equip === srcRow.equip && (r.originId || r.id) !== oid)) {
-          return null;
-        }
-        return {
-          id: Date.now() + Math.random(), originId: oid,
-          desc: srcRow.desc || '', equip: srcRow.equip || '',
-          company: srcRow.company || '', start: srcRow.start || '', release: srcRow.release || '',
-          days: [false,false,false,false,false,false,false],
-          startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : '',
-          endHrs: '', cost: srcRow.cost || ''
-        };
-      }
-    }).filter(r => r !== null);
-    store.weeks[weekIso] = { rows: newRows };
-    sourceRows = newRows;
+      if (futureByOrigin.has(oid)) continue;
+      // skip if a different row already claims this equip number
+      if (srcRow.equip && futureRows.some(r => r.equip === srcRow.equip && (r.originId || r.id) !== oid)) continue;
+      updatedRows.push({
+        id: Date.now() + Math.random(), originId: oid,
+        desc: srcRow.desc || '', equip: srcRow.equip || '',
+        company: srcRow.company || '', start: srcRow.start || '', release: srcRow.release || '',
+        days: [false,false,false,false,false,false,false],
+        startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : '',
+        endHrs: '', cost: srcRow.cost || ''
+      });
+    }
+
+    store.weeks[weekIso] = { rows: updatedRows };
+    sourceRows = updatedRows;
   }
 }
 
