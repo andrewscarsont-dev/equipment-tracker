@@ -1116,24 +1116,28 @@ function propagateForward(fromIso) {
   let sourceRows = store.weeks[fromIso].rows;
   for (const weekIso of futureWeeks) {
     const futureRows = store.weeks[weekIso].rows || [];
-    const futureByOrigin = new Map(futureRows.map(r => [r.originId || r.id, r]));
+    const futureByEquip = new Map(futureRows.filter(r => r.equip).map(r => [r.equip, r]));
+    const matchedFutureIds = new Set();
 
-    // Update existing future rows that match a source row by originId
+    // Update existing future rows — match by originId first, fall back to equip number
     const updatedRows = futureRows.map(futureRow => {
-      const oid = futureRow.originId || futureRow.id;
-      const srcRow = sourceRows.find(r => (r.originId || r.id) === oid);
+      const foid = futureRow.originId || futureRow.id;
+      let srcRow = sourceRows.find(r => (r.originId || r.id) === foid);
+      if (!srcRow && futureRow.equip) srcRow = sourceRows.find(r => r.equip && r.equip === futureRow.equip);
       if (!srcRow) return futureRow; // independently added — leave untouched
+      const oid = srcRow.originId || srcRow.id;
+      matchedFutureIds.add(foid);
       return { ...futureRow, originId: oid, desc: srcRow.desc, equip: srcRow.equip,
         company: srcRow.company, start: srcRow.start, release: srcRow.release, cost: srcRow.cost,
         startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : futureRow.startHrs };
     });
 
-    // Add source rows that don't exist in this future week yet
+    // Add source rows with no originId or equip match in this future week
     for (const srcRow of sourceRows) {
       const oid = srcRow.originId || srcRow.id;
-      if (futureByOrigin.has(oid)) continue;
-      // skip if a different row already claims this equip number
-      if (srcRow.equip && futureRows.some(r => r.equip === srcRow.equip && (r.originId || r.id) !== oid)) continue;
+      const matchedByOrigin = futureRows.some(r => (r.originId || r.id) === oid);
+      const matchedByEquip = srcRow.equip && futureByEquip.has(srcRow.equip);
+      if (matchedByOrigin || matchedByEquip) continue;
       updatedRows.push({
         id: Date.now() + Math.random(), originId: oid,
         desc: srcRow.desc || '', equip: srcRow.equip || '',
