@@ -1117,6 +1117,7 @@ function propagateForward(fromIso) {
   for (const weekIso of futureWeeks) {
     const futureRows = store.weeks[weekIso].rows || [];
     const matchedSourceIds = new Set();
+    const matchedEquips = new Set();
     const result = [];
 
     // Update existing future rows — match by originId first, fall back to equip number
@@ -1127,6 +1128,7 @@ function propagateForward(fromIso) {
       if (!srcRow) { result.push(futureRow); continue; }
       const oid = srcRow.originId || srcRow.id;
       matchedSourceIds.add(oid);
+      if (srcRow.equip) matchedEquips.add(srcRow.equip);
       result.push({ ...futureRow, originId: oid, desc: srcRow.desc, equip: srcRow.equip,
         company: srcRow.company, start: srcRow.start, release: srcRow.release, cost: srcRow.cost,
         startHrs: (srcRow.endHrs && !isNaN(parseFloat(srcRow.endHrs))) ? srcRow.endHrs : futureRow.startHrs });
@@ -1136,6 +1138,7 @@ function propagateForward(fromIso) {
     for (const srcRow of sourceRows) {
       const oid = srcRow.originId || srcRow.id;
       if (matchedSourceIds.has(oid)) continue;
+      if (srcRow.equip && matchedEquips.has(srcRow.equip)) continue;
       result.push({
         id: Date.now() + Math.random(), originId: oid,
         desc: srcRow.desc || '', equip: srcRow.equip || '',
@@ -1146,8 +1149,16 @@ function propagateForward(fromIso) {
       });
     }
 
-    store.weeks[weekIso] = { rows: result };
-    sourceRows = result;
+    // Safety net: deduplicate by equip number, keeping first occurrence
+    const seenEquips = new Set();
+    const deduped = result.filter(r => {
+      if (!r.equip) return true;
+      if (seenEquips.has(r.equip)) return false;
+      seenEquips.add(r.equip);
+      return true;
+    });
+    store.weeks[weekIso] = { rows: deduped };
+    sourceRows = deduped;
   }
 }
 
