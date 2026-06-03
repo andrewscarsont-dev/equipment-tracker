@@ -829,15 +829,15 @@
   <div class="report-meta">
     <div class="meta-field">
       <label>Project / Job</label>
-      <input type="text" id="project" placeholder="Bates Towne Crossing" autocomplete="off" />
+      <input type="text" id="project" placeholder="Enter job name" autocomplete="off" />
     </div>
     <div class="meta-field">
       <label>Report #</label>
-      <input type="text" id="report-num" placeholder="25TX09HPZA" autocomplete="off" />
+      <input type="text" id="report-num" placeholder="Enter report #" autocomplete="off" />
     </div>
     <div class="meta-field">
       <label>Superintendent</label>
-      <input type="text" id="super" placeholder="candrews" autocomplete="off" />
+      <input type="text" id="super" placeholder="Enter name" autocomplete="off" />
     </div>
     <div class="meta-field">
       <label>Week Ending</label>
@@ -1331,18 +1331,18 @@ function renderDesktopRows() {
   rows.forEach(r => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="text" value="${esc(r.desc)}" placeholder="20KW Generator" data-field="desc" data-id="${r.id}" /></td>
-      <td><input type="text" value="${esc(r.equip)}" placeholder="217815" data-field="equip" data-id="${r.id}" /></td>
-      <td><input type="text" value="${esc(r.company)}" placeholder="SUN" data-field="company" data-id="${r.id}" /></td>
+      <td><input type="text" value="${esc(r.desc)}" placeholder="Enter description" data-field="desc" data-id="${r.id}" /></td>
+      <td><input type="text" value="${esc(r.equip)}" placeholder="Enter equip #" data-field="equip" data-id="${r.id}" /></td>
+      <td><input type="text" value="${esc(r.company)}" placeholder="Enter company" data-field="company" data-id="${r.id}" /></td>
       <td><input type="date" value="${esc(r.start)}" data-field="start" data-id="${r.id}" /></td>
       <td><input type="date" value="${esc(r.release)}" data-field="release" data-id="${r.id}" /></td>
       ${r.days.map((checked, i) => `
         <td class="day-cell"><input type="checkbox" ${checked ? 'checked' : ''} data-field="day${i}" data-id="${r.id}" /></td>
       `).join('')}
-      <td class="hrs-cell"><input type="text" inputmode="decimal" value="${esc(r.startHrs)}" placeholder="0" data-field="startHrs" data-id="${r.id}" /></td>
-      <td class="hrs-cell"><input type="text" inputmode="decimal" value="${esc(r.endHrs)}" placeholder="0" data-field="endHrs" data-id="${r.id}" /></td>
+      <td class="hrs-cell"><input type="text" inputmode="decimal" value="${esc(r.startHrs)}" placeholder="Enter hrs" data-field="startHrs" data-id="${r.id}" /></td>
+      <td class="hrs-cell"><input type="text" inputmode="decimal" value="${esc(r.endHrs)}" placeholder="Enter hrs" data-field="endHrs" data-id="${r.id}" /></td>
       <td class="hrs-used-cell" id="hrs-used-${r.id}">${formatHrsUsed(r)}</td>
-      <td class="cost-cell"><input type="text" inputmode="decimal" value="${esc(r.cost)}" placeholder="0.00" data-field="cost" data-id="${r.id}" /></td>
+      <td class="cost-cell"><input type="text" inputmode="decimal" value="${esc(r.cost)}" placeholder="Enter cost" data-field="cost" data-id="${r.id}" /></td>
       <td><button class="btn-del" onclick="deleteRow(${r.id})" title="Remove">×</button></td>
     `;
     tbody.appendChild(tr);
@@ -1371,7 +1371,7 @@ function renderMobileCards() {
     card.innerHTML = `
       <div class="card-head">
         <div class="card-head-main">
-          <input class="card-desc" type="text" value="${esc(r.desc)}" placeholder="20KW Generator" data-field="desc" data-id="${r.id}" autocomplete="off" />
+          <input class="card-desc" type="text" value="${esc(r.desc)}" placeholder="Enter description" data-field="desc" data-id="${r.id}" autocomplete="off" />
           <div class="card-sub">${subText}</div>
         </div>
         <button class="card-del" onclick="deleteRow(${r.id})" aria-label="Remove">×</button>
@@ -1381,11 +1381,11 @@ function renderMobileCards() {
         <div class="field-grid">
           <div class="field-cell">
             <label>Equip #</label>
-            <input type="text" value="${esc(r.equip)}" placeholder="217815" data-field="equip" data-id="${r.id}" autocomplete="off" />
+            <input type="text" value="${esc(r.equip)}" placeholder="Enter equip #" data-field="equip" data-id="${r.id}" autocomplete="off" />
           </div>
           <div class="field-cell">
             <label>Company</label>
-            <input type="text" value="${esc(r.company)}" placeholder="SUN" data-field="company" data-id="${r.id}" autocomplete="off" />
+            <input type="text" value="${esc(r.company)}" placeholder="Enter company" data-field="company" data-id="${r.id}" autocomplete="off" />
           </div>
           <div class="field-cell">
             <label>Rental Start</label>
@@ -1409,11 +1409,11 @@ function renderMobileCards() {
         <div class="field-grid">
           <div class="field-cell full">
             <label>Start Hours (Meter)</label>
-            <input type="text" inputmode="decimal" value="${esc(r.startHrs)}" placeholder="e.g. 1240.5" data-field="startHrs" data-id="${r.id}" autocomplete="off" />
+            <input type="text" inputmode="decimal" value="${esc(r.startHrs)}" placeholder="Enter start hrs" data-field="startHrs" data-id="${r.id}" autocomplete="off" />
           </div>
           <div class="field-cell full">
             <label>End Hours (Meter)</label>
-            <input type="text" inputmode="decimal" value="${esc(r.endHrs)}" placeholder="e.g. 1287.0" data-field="endHrs" data-id="${r.id}" autocomplete="off" />
+            <input type="text" inputmode="decimal" value="${esc(r.endHrs)}" placeholder="Enter end hrs" data-field="endHrs" data-id="${r.id}" autocomplete="off" />
           </div>
           <div class="field-cell full hrs-used-readout" id="hrs-used-card-${r.id}">
             <label>Hours Used This Week</label>
@@ -1421,7 +1421,7 @@ function renderMobileCards() {
           </div>
           <div class="field-cell full">
             <label>Weekly Cost ($)</label>
-            <input class="cost-input" type="text" inputmode="decimal" value="${esc(r.cost)}" placeholder="0.00" data-field="cost" data-id="${r.id}" />
+            <input class="cost-input" type="text" inputmode="decimal" value="${esc(r.cost)}" placeholder="Enter cost" data-field="cost" data-id="${r.id}" />
           </div>
         </div>
 
