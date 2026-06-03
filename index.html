@@ -175,6 +175,47 @@
 
   .week-day input::placeholder { color: var(--mid); }
 
+  /* ── JOB BAR ── */
+  .job-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .job-bar-label {
+    background: var(--steel);
+    padding: 10px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  .job-select {
+    flex: 1;
+    background: var(--charcoal);
+    border: none;
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 14px;
+    outline: none;
+    cursor: pointer;
+    min-width: 0;
+  }
+
+  .job-select option { background: var(--charcoal); color: var(--white); }
+
+  .job-bar .btn-add { border: none; }
+
   /* ── SECTION HEADER ── */
   .section-header {
     display: flex;
@@ -691,7 +732,7 @@
 
     /* hide non-print elements */
     .actions, .btn-add, .btn-del, .section-header, .mobile-action-bar,
-    .equip-cards, .sync-pill, #live-clock { display: none !important; }
+    .equip-cards, .sync-pill, #live-clock, .job-bar { display: none !important; }
 
     /* meta / week strip */
     .report-meta, .week-strip, .equip-table, .totals-bar { background: white; color: black; }
@@ -776,6 +817,13 @@
 </div>
 
 <div class="container">
+
+  <!-- Job Switcher -->
+  <div class="job-bar">
+    <div class="job-bar-label">Job</div>
+    <select id="job-select" class="job-select"></select>
+    <button class="btn-add" onclick="promptNewJob()">+ New Job</button>
+  </div>
 
   <!-- Report Meta -->
   <div class="report-meta">
@@ -904,12 +952,94 @@ function setWeekDates(endDateStr) {
   }
 }
 
-// ── Multi-week state ──
-let store = {
-  currentWeek: null,        // 'YYYY-MM-DD' of active week-ending Saturday
-  meta: { project: '', reportNum: '', super: '', notes: '' },
-  weeks: {}                 // { 'YYYY-MM-DD': { rows: [...] } }
+// ── Multi-job state ──
+// db is the full saved blob: a set of jobs, each with its own weeks/meta/currentWeek.
+// `store` always points at the active job, so the rest of the app keeps using
+// store.currentWeek / store.meta / store.weeks exactly as before.
+let db = {
+  version: 2,
+  currentJobId: null,
+  jobs: {}                  // { jobId: { id, meta, currentWeek, weeks } }
 };
+let store = null;           // → db.jobs[db.currentJobId]
+
+function genJobId() {
+  return 'j_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function newJob(name, weekEnd) {
+  const id = genJobId();
+  const wk = weekEnd || defaultWeekEnd();
+  return {
+    id,
+    meta: { project: name || '', reportNum: '', super: '', notes: '' },
+    currentWeek: wk,
+    weeks: { [wk]: { rows: [] } }
+  };
+}
+
+function setActiveJob(id) {
+  if (!db.jobs[id]) return;
+  db.currentJobId = id;
+  store = db.jobs[id];
+  if (!store.currentWeek || !store.weeks[store.currentWeek]) {
+    store.currentWeek = Object.keys(store.weeks).sort().reverse()[0] || defaultWeekEnd();
+    if (!store.weeks[store.currentWeek]) store.weeks[store.currentWeek] = { rows: [] };
+  }
+  rows = store.weeks[store.currentWeek].rows;
+}
+
+function jobName(id) {
+  const j = db.jobs[id];
+  return (j && j.meta && j.meta.project) ? j.meta.project : '(untitled job)';
+}
+
+function rebuildJobDropdown() {
+  const sel = document.getElementById('job-select');
+  if (!sel) return;
+  const ids = Object.keys(db.jobs)
+    .sort((a, b) => jobName(a).localeCompare(jobName(b)));
+  sel.innerHTML = ids.map(id =>
+    `<option value="${esc(id)}" ${id === db.currentJobId ? 'selected' : ''}>${esc(jobName(id))}</option>`
+  ).join('') + `<option value="__new_job__">+ New Job…</option>`;
+}
+
+document.getElementById('job-select').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v === '__new_job__') { promptNewJob(); return; }
+  switchToJob(v);
+});
+
+function switchToJob(id) {
+  if (!id || id === db.currentJobId || !db.jobs[id]) { rebuildJobDropdown(); return; }
+  // save the job we're leaving
+  readMetaInputs();
+  persistCurrentWeek();
+  setActiveJob(id);
+  applyMetaToInputs();
+  rebuildJobDropdown();
+  rebuildWeekDropdown();
+  setWeekDates(store.currentWeek);
+  renderRows();
+  scheduleCloudSave();
+}
+
+function promptNewJob() {
+  const name = window.prompt('Name for the new job / project:', '');
+  if (name === null) { rebuildJobDropdown(); return; } // cancelled
+  // save the job we're leaving first
+  readMetaInputs();
+  persistCurrentWeek();
+  const job = newJob(name.trim(), defaultWeekEnd());
+  db.jobs[job.id] = job;
+  setActiveJob(job.id);
+  applyMetaToInputs();
+  rebuildJobDropdown();
+  rebuildWeekDropdown();
+  setWeekDates(store.currentWeek);
+  renderRows();
+  scheduleCloudSave();
+}
 
 function isoSaturdayForDate(d) {
   const day = d.getDay(); // 0=Sun, 6=Sat
@@ -1472,11 +1602,13 @@ window.addEventListener('beforeunload', e => {
 async function cloudSave() {
   pendingSave = true;
   setSyncStatus('saving');
+  readMetaInputs();
+  persistCurrentWeek();
   try {
     const res = await fetch('/api/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(store)
+      body: JSON.stringify(db)
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     setSyncStatus('saved');
@@ -1487,21 +1619,58 @@ async function cloudSave() {
   }
 }
 
-function applyCloudData(data) {
-  store.meta = data.meta || { project:'', reportNum:'', super:'', notes:'' };
-  store.weeks = {};
-  if (data.weeks && typeof data.weeks === 'object') {
-    Object.keys(data.weeks).forEach(wk => {
-      const w = data.weeks[wk];
-      store.weeks[wk] = { rows: Array.isArray(w.rows) ? w.rows.map(sanitizeRow) : [] };
+function normalizeJob(j, fallbackId) {
+  const meta = (j && j.meta) ? j.meta : {};
+  const weeks = {};
+  if (j && j.weeks && typeof j.weeks === 'object') {
+    Object.keys(j.weeks).forEach(wk => {
+      const w = j.weeks[wk];
+      weeks[wk] = { rows: Array.isArray(w.rows) ? w.rows.map(sanitizeRow) : [] };
     });
   }
-  store.currentWeek = data.currentWeek && store.weeks[data.currentWeek]
-    ? data.currentWeek
-    : (Object.keys(store.weeks).sort().reverse()[0] || defaultWeekEnd());
-  if (!store.weeks[store.currentWeek]) store.weeks[store.currentWeek] = { rows: [] };
-  // Auto-advance: if the stored week is in the past, jump to the current week with carry-over
+  let currentWeek = (j && j.currentWeek && weeks[j.currentWeek])
+    ? j.currentWeek
+    : (Object.keys(weeks).sort().reverse()[0] || defaultWeekEnd());
+  if (!weeks[currentWeek]) weeks[currentWeek] = { rows: [] };
+  return {
+    id: (j && j.id) || fallbackId,
+    meta: {
+      project: meta.project || '',
+      reportNum: meta.reportNum || '',
+      super: meta.super || '',
+      notes: meta.notes || ''
+    },
+    currentWeek,
+    weeks
+  };
+}
+
+// Accepts either the new multi-job shape ({ jobs }) or the legacy
+// single-project shape ({ currentWeek, meta, weeks }) and returns a v2 db.
+function migrateToDb(data) {
+  if (data && data.jobs && typeof data.jobs === 'object' && Object.keys(data.jobs).length) {
+    const jobs = {};
+    Object.keys(data.jobs).forEach(id => { jobs[id] = normalizeJob(data.jobs[id], id); });
+    let currentJobId = (data.currentJobId && jobs[data.currentJobId])
+      ? data.currentJobId
+      : Object.keys(jobs)[0];
+    return { version: 2, currentJobId, jobs };
+  }
+  // legacy single-project blob → wrap in one job
+  const job = normalizeJob({
+    meta: data && data.meta,
+    currentWeek: data && data.currentWeek,
+    weeks: data && data.weeks
+  }, genJobId());
+  return { version: 2, currentJobId: job.id, jobs: { [job.id]: job } };
+}
+
+// Auto-advance the active job: if its stored week is in the past, jump to the
+// current week, carrying over the most recent prior week's rows.
+// Returns true if the week was advanced (so we know to re-upload).
+function autoAdvanceWeek() {
   const thisWeek = defaultWeekEnd();
+  let advanced = false;
   if (store.currentWeek < thisWeek) {
     if (!store.weeks[thisWeek] || !store.weeks[thisWeek].rows?.length) {
       const priorIso = findMostRecentPriorWeekWithData(thisWeek);
@@ -1510,8 +1679,16 @@ function applyCloudData(data) {
         : { rows: [] };
     }
     store.currentWeek = thisWeek;
+    advanced = true;
   }
   rows = store.weeks[store.currentWeek].rows;
+  return advanced;
+}
+
+function applyCloudData(data) {
+  db = migrateToDb(data);
+  setActiveJob(db.currentJobId);
+  return autoAdvanceWeek();
 }
 
 function migrateLocalStorage() {
@@ -1527,11 +1704,12 @@ function migrateLocalStorage() {
     if (rawV1) {
       const data = JSON.parse(rawV1);
       const m = data.meta || {};
-      store.meta = { project:m.project||'', reportNum:m.reportNum||'', super:m.super||'', notes:m.notes||'' };
       const wk = m.weekEnd || defaultWeekEnd();
-      store.weeks = { [wk]: { rows: Array.isArray(data.rows) ? data.rows.map(sanitizeRow) : [] } };
-      store.currentWeek = wk;
-      rows = store.weeks[wk].rows;
+      applyCloudData({
+        meta: { project:m.project||'', reportNum:m.reportNum||'', super:m.super||'', notes:m.notes||'' },
+        currentWeek: wk,
+        weeks: { [wk]: { rows: Array.isArray(data.rows) ? data.rows : [] } }
+      });
       localStorage.removeItem('equip_report');
       return true;
     }
@@ -1548,18 +1726,19 @@ async function cloudLoad() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data) {
-      const cloudWeek = data.currentWeek;
-      applyCloudData(data);
+      const wasV2 = !!(data.jobs);            // already in multi-job shape?
+      const advanced = applyCloudData(data);
       hadData = true;
-      if (store.currentWeek !== cloudWeek) shouldUpload = true;
+      // re-upload if we migrated an old blob, or advanced to a new week
+      shouldUpload = !wasV2 || advanced;
     } else {
       shouldUpload = migrateLocalStorage();
       if (shouldUpload) {
         hadData = true;
       } else {
-        store.currentWeek = defaultWeekEnd();
-        store.weeks[store.currentWeek] = { rows: [] };
-        rows = store.weeks[store.currentWeek].rows;
+        const job = newJob('', defaultWeekEnd());
+        db = { version: 2, currentJobId: job.id, jobs: { [job.id]: job } };
+        setActiveJob(job.id);
       }
     }
     setSyncStatus(shouldUpload ? 'saving' : 'saved');
@@ -1568,6 +1747,7 @@ async function cloudLoad() {
     hadData = true; // avoid seeding on error
   }
   applyMetaToInputs();
+  rebuildJobDropdown();
   rebuildWeekDropdown();
   setWeekDates(store.currentWeek);
   renderRows();
@@ -1581,19 +1761,20 @@ async function cloudRefresh() {
     if (!res.ok) return;
     const data = await res.json();
     if (!data) return;
+    const activeJobId = db.currentJobId;
     const activeWeek = store.currentWeek;
-    if (data.meta) store.meta = data.meta;
-    if (data.weeks) {
-      Object.keys(data.weeks).forEach(wk => {
-        const w = data.weeks[wk];
-        store.weeks[wk] = { rows: Array.isArray(w.rows) ? w.rows.map(sanitizeRow) : [] };
-      });
+    db = migrateToDb(data);
+    // stay on the same job/week the user was viewing, if they still exist remotely
+    if (db.jobs[activeJobId]) db.currentJobId = activeJobId;
+    setActiveJob(db.currentJobId);
+    if (store.weeks[activeWeek]) {
+      store.currentWeek = activeWeek;
+      rows = store.weeks[activeWeek].rows;
     }
-    if (!store.weeks[activeWeek]) store.weeks[activeWeek] = { rows: [] };
-    rows = store.weeks[activeWeek].rows;
     applyMetaToInputs();
+    rebuildJobDropdown();
     rebuildWeekDropdown();
-    setWeekDates(activeWeek);
+    setWeekDates(store.currentWeek);
     renderRows();
     setSyncStatus('saved');
   } catch(e) {}
@@ -1615,8 +1796,16 @@ function clearAll() {
 }
 
 // bind meta inputs to save
-['project','report-num','super'].forEach(id => {
+['report-num','super'].forEach(id => {
   document.getElementById(id).addEventListener('input', saveData);
+});
+
+// editing the Project / Job field renames the active job — keep the dropdown label in sync
+document.getElementById('project').addEventListener('input', () => {
+  saveData();
+  const sel = document.getElementById('job-select');
+  const opt = sel && sel.querySelector(`option[value="${db.currentJobId}"]`);
+  if (opt) opt.textContent = jobName(db.currentJobId);
 });
 
 function esc(s) {
@@ -1625,9 +1814,12 @@ function esc(s) {
 
 // ── Init ──
 (async () => {
-  store.currentWeek = defaultWeekEnd();
-  store.weeks[store.currentWeek] = { rows: [] };
-  rows = store.weeks[store.currentWeek].rows;
+  // seed a temporary empty job so the first render has something to point at;
+  // cloudLoad() replaces db with whatever is in the cloud (migrating old shapes).
+  const seed = newJob('', defaultWeekEnd());
+  db = { version: 2, currentJobId: seed.id, jobs: { [seed.id]: seed } };
+  setActiveJob(seed.id);
+  rebuildJobDropdown();
   rebuildWeekDropdown();
   setWeekDates(store.currentWeek);
   const hadData = await cloudLoad();

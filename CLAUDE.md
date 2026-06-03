@@ -18,25 +18,43 @@ netlify/functions/
 
 ## Data model
 
-One shared blob stored in Netlify Blobs under store "equipment-tracker", key "equip\_report". Shape:
+One shared blob stored in Netlify Blobs under store "equipment-tracker", key "equip\_report". Shape (v2 — multi-job):
 
 {
 
-  currentWeek: "2026-05-16",        // YYYY-MM-DD of active Saturday
+  version: 2,
 
-  meta: { project, reportNum, super, notes },
+  currentJobId: "j\_xxx",            // active job
 
-  weeks: {
+  jobs: {
 
-    "2026-05-09": { rows: \[...\] },
+    "j\_xxx": {
 
-    "2026-05-16": { rows: \[...\] },
+      id: "j\_xxx",
+
+      meta: { project, reportNum, super, notes },   // project = the job's display name
+
+      currentWeek: "2026-05-16",    // YYYY-MM-DD of active Saturday
+
+      weeks: {
+
+        "2026-05-09": { rows: \[...\] },
+
+        "2026-05-16": { rows: \[...\] },
+
+      }
+
+    }
 
   },
 
   lastSavedAt: "ISO-string"         // set by the function on every write
 
 }
+
+Each job is fully self-contained — its own weeks, rows, and meta. Switching jobs (the Job dropdown in the UI) swaps which job is active; equipment never crosses between jobs.
+
+Backward compatibility: the frontend auto-migrates the old single-project shape (top-level `currentWeek` / `meta` / `weeks`, no `jobs`) into one job on load via `migrateToDb()`, then re-uploads. Internally the JS keeps a `db` object (all jobs) and a `store` variable that points at the active job — so existing per-week code still reads `store.currentWeek` / `store.meta` / `store.weeks`.
 
 Each row:
 
@@ -52,7 +70,7 @@ Each row:
 
 ## How sync works
 
-- Frontend debounces saves (1.5s after last edit) then POSTs the full store  
+- Frontend debounces saves (1.5s after last edit) then POSTs the full db (all jobs)  
 - Frontend auto-refreshes every 30s, but skips refresh if user is focused on any input or has a pending save — prevents typing collisions  
 - Sync status pill in the header shows: Loading / Saving / Saved / Error  
 - Cloud-only — no localStorage fallback, no offline mode
