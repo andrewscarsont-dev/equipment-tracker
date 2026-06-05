@@ -64,9 +64,11 @@ Each row:
 
   days: \[bool,bool,bool,bool,bool,bool,bool\],  // Sat-Fri on-site
 
-  startHrs, endHrs, cost
+  startHrs, endHrs, cost   // cost is kept in the data model for back-compat but no longer shown/edited in the UI
 
 }
+
+Rows whose `days` are all true can be collapsed in the UI into a single "on-site all week" cell (screen-only view state in `collapsedDayRows`, never persisted; auto-expanded for printing).
 
 ## How sync works
 
@@ -85,7 +87,7 @@ Each row:
 ## Design
 
 - Dark theme, IBM Plex fonts, amber accent (\#f0a500), green for "saved"/positive, red for "error"/warnings  
-- Desktop: 15-column table at \>= 768px  
+- Desktop: wide multi-column table at \>= 768px (Description through Hrs Used, plus 7 day columns + an "All week" toggle)  
 - Mobile: stacked cards with fields one per row, sticky bottom action bar  
 - Print stylesheet outputs a clean PDF via window.print()
 
