@@ -390,6 +390,37 @@
 
   .btn-del:hover, .btn-del:active { color: var(--red); }
 
+  /* "All week" on-site toggle (desktop column + mobile chip header) */
+  .btn-all-days {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 7px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.12s;
+  }
+  .btn-all-days:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-all-days.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .days-chips-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .days-chips-head label { margin-bottom: 0 !important; }
+
   /* ── MOBILE CARDS (hidden on desktop) ── */
   .equip-cards { display: none; }
 
@@ -763,9 +794,10 @@
       border: 1px solid #ddd;
     }
 
-    /* hide delete column */
+    /* hide delete column + the interactive "All week" column */
     .equip-table th:last-child,
-    .equip-table td:last-child { display: none !important; }
+    .equip-table td:last-child,
+    .equip-table tr > :nth-child(13) { display: none !important; }
 
     /* column widths as percentages */
     .equip-table tr > :nth-child(1)  { width: 16% !important; } /* Description */
@@ -779,11 +811,12 @@
     .equip-table tr > :nth-child(9),
     .equip-table tr > :nth-child(10),
     .equip-table tr > :nth-child(11),
-    .equip-table tr > :nth-child(12) { width: 3%  !important; text-align: center !important; } /* M-Su */
-    .equip-table tr > :nth-child(13) { width: 7%  !important; } /* Start Hrs */
-    .equip-table tr > :nth-child(14) { width: 7%  !important; } /* End Hrs */
-    .equip-table tr > :nth-child(15) { width: 6%  !important; } /* Hrs Used */
-    .equip-table tr > :nth-child(16) { width: 8%  !important; } /* Weekly Cost */
+    .equip-table tr > :nth-child(12) { width: 3%  !important; text-align: center !important; } /* Sa-Fri */
+    /* nth-child(13) = "All week" column, hidden above */
+    .equip-table tr > :nth-child(14) { width: 7%  !important; } /* Start Hrs */
+    .equip-table tr > :nth-child(15) { width: 7%  !important; } /* End Hrs */
+    .equip-table tr > :nth-child(16) { width: 6%  !important; } /* Hrs Used */
+    .equip-table tr > :nth-child(17) { width: 8%  !important; } /* Weekly Cost */
 
     /* inputs render as plain text */
     .equip-table td input[type="text"],
@@ -873,6 +906,7 @@
         <th class="day-cell" title="Wednesday">W</th>
         <th class="day-cell" title="Thursday">T</th>
         <th class="day-cell" title="Friday">F</th>
+        <th class="day-cell" title="On-site all week">All</th>
         <th style="width:75px;text-align:right">Start Hrs</th>
         <th style="width:75px;text-align:right">End Hrs</th>
         <th style="width:70px;text-align:right">Hrs Used</th>
@@ -1340,6 +1374,7 @@ function renderDesktopRows() {
       ${r.days.map((checked, i) => `
         <td class="day-cell"><input type="checkbox" ${checked ? 'checked' : ''} data-field="day${i}" data-id="${r.id}" /></td>
       `).join('')}
+      <td class="day-cell"><button type="button" class="btn-all-days ${r.days.every(Boolean) ? 'active' : ''}" data-id="${r.id}" onclick="setAllDays(${r.id})" title="Mark on-site all week">All</button></td>
       <td class="hrs-cell"><input type="text" inputmode="decimal" value="${esc(r.startHrs)}" placeholder="Enter hrs" data-field="startHrs" data-id="${r.id}" /></td>
       <td class="hrs-cell"><input type="text" inputmode="decimal" value="${esc(r.endHrs)}" placeholder="Enter hrs" data-field="endHrs" data-id="${r.id}" /></td>
       <td class="hrs-used-cell" id="hrs-used-${r.id}">${formatHrsUsed(r)}</td>
@@ -1399,7 +1434,10 @@ function renderMobileCards() {
         </div>
 
         <div class="days-chips-wrap" style="margin-bottom:10px">
-          <label>On-Site Days (M T W T F S S)</label>
+          <div class="days-chips-head">
+            <label>On-Site Days (Sa Su M T W T F)</label>
+            <button type="button" class="btn-all-days ${r.days.every(Boolean) ? 'active' : ''}" data-id="${r.id}" onclick="setAllDays(${r.id})">All week</button>
+          </div>
           <div class="days-chips">
             ${r.days.map((checked, i) => `
               <div class="day-chip ${checked ? 'active' : ''}" data-chip-day="${i}" data-id="${r.id}">${DAY_SHORT[i]}</div>
@@ -1445,9 +1483,37 @@ function renderMobileCards() {
       // mirror to desktop checkbox if visible
       const cb = document.querySelector(`#equip-body input[data-id="${id}"][data-field="day${idx}"]`);
       if (cb) cb.checked = r.days[idx];
+      refreshAllDaysBtn(id);
       saveData();
     });
   });
+}
+
+// "All week" toggle: fill every day on-site, or clear them all if already full.
+function setAllDays(id) {
+  const r = rows.find(r => r.id === id);
+  if (!r) return;
+  const turnOn = !r.days.every(Boolean);
+  r.days = [turnOn, turnOn, turnOn, turnOn, turnOn, turnOn, turnOn];
+  // sync desktop checkboxes for this row
+  document.querySelectorAll(`#equip-body input[data-id="${id}"][data-field^="day"]`)
+    .forEach(cb => { cb.checked = turnOn; });
+  // sync mobile chips for this row
+  document.querySelectorAll(`#equip-cards .day-chip[data-id="${id}"]`)
+    .forEach(chip => chip.classList.toggle('active', turnOn));
+  // sync the All-week buttons (desktop + mobile)
+  document.querySelectorAll(`.btn-all-days[data-id="${id}"]`)
+    .forEach(b => b.classList.toggle('active', turnOn));
+  saveData();
+}
+
+// Light the "All week" button only when every day for that row is on.
+function refreshAllDaysBtn(id) {
+  const r = rows.find(r => r.id === id);
+  if (!r) return;
+  const allOn = r.days.every(Boolean);
+  document.querySelectorAll(`.btn-all-days[data-id="${id}"]`)
+    .forEach(b => b.classList.toggle('active', allOn));
 }
 
 function bindFieldEvents(scope) {
@@ -1473,6 +1539,7 @@ function onFieldChange(e) {
     // mirror to mobile chip
     const chip = document.querySelector(`#equip-cards .day-chip[data-id="${id}"][data-chip-day="${idx}"]`);
     if (chip) chip.classList.toggle('active', el.checked);
+    refreshAllDaysBtn(id);
   } else {
     r[field] = el.value;
     // refresh hours-used readout if a meter field changed

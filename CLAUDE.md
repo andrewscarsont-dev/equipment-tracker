@@ -34,7 +34,7 @@ One shared blob stored in Netlify Blobs under store "equipment-tracker", key "eq
 
       meta: { project, reportNum, super, notes },   // project = the job's display name
 
-      currentWeek: "2026-05-16",    // YYYY-MM-DD of active Saturday
+      currentWeek: "2026-05-15",    // YYYY-MM-DD of active week-ending Friday
 
       weeks: {
 
@@ -62,7 +62,7 @@ Each row:
 
   id, desc, equip, company, start, release,
 
-  days: \[bool,bool,bool,bool,bool,bool,bool\],  // Mon-Sun on-site
+  days: \[bool,bool,bool,bool,bool,bool,bool\],  // Sat-Fri on-site
 
   startHrs, endHrs, cost
 
@@ -77,9 +77,9 @@ Each row:
 
 ## Conventions
 
-- Week-ending dates are always the Saturday of that week (YYYY-MM-DD)  
+- The week runs Saturday → Friday; week-ending dates are always the Friday of that week (YYYY-MM-DD)  
 - Hours carry over: when you switch to an empty future week, the most recent prior week's End Hrs become the new Start Hrs (handled client-side in switchToWeek \-\> carryRows)  
-- Week dropdown auto-shows the last 9 Saturdays plus any older archived weeks  
+- Week dropdown auto-shows the last 9 week-ending Fridays plus any older archived weeks  
 - No login, no auth — anyone with the URL can read/write
 
 ## Design
