@@ -1509,37 +1509,51 @@ function renderMobileCards() {
       // mirror to desktop checkbox if visible
       const cb = document.querySelector(`#equip-body input[data-id="${id}"][data-field="day${idx}"]`);
       if (cb) cb.checked = r.days[idx];
-      refreshAllDaysBtn(id);
+      syncDaysAfterToggle(id);
       saveData();
     });
   });
 }
 
-// Rows shown with the day columns collapsed into one "on-site all week" cell.
-// Screen-only view state (never persisted); cleared for printing so the full
-// day grid always shows on the PDF.
-const collapsedDayRows = new Set();
+// A row whose days are ALL on collapses to a single "on-site all week" banner —
+// no matter how it got there (the "All" button or checking each day by hand).
+// editingDayRows holds rows the user expanded (via the banner) to uncheck a
+// specific day, so they stay editable while still fully checked. Screen-only
+// view state; never persisted; cleared for printing so the PDF shows all days.
+const editingDayRows = new Set();
 let printingReport = false;
 
 function isDaysCollapsed(r) {
-  return !printingReport && collapsedDayRows.has(r.id) && r.days.every(Boolean);
+  return !printingReport && r.days.every(Boolean) && !editingDayRows.has(r.id);
 }
 
-// "All week": mark every day on-site and collapse the day columns for that row.
+// "All week": mark every day on-site (collapses the row to the banner).
 function selectAllDays(id) {
   const r = rows.find(r => r.id === id);
   if (!r) return;
   r.days = [true, true, true, true, true, true, true];
-  collapsedDayRows.add(id);
+  editingDayRows.delete(id);
   renderRows();
   saveData();
 }
 
-// Expand a collapsed row back to individual day checkboxes (keeps the days on
-// so you can uncheck specific ones).
+// Expand a banner row back to checkboxes so individual days can be unchecked.
 function editDays(id) {
-  collapsedDayRows.delete(id);
+  editingDayRows.add(id);
   renderRows();
+}
+
+// Called after a single day is toggled: collapse to the banner the moment every
+// day is on, or drop the edit flag once it's no longer a full week.
+function syncDaysAfterToggle(id) {
+  const r = rows.find(r => r.id === id);
+  if (!r) return;
+  if (r.days.every(Boolean) && !editingDayRows.has(id)) {
+    renderRows();                       // all 7 selected → show the banner
+  } else {
+    if (!r.days.every(Boolean)) editingDayRows.delete(id);
+    refreshAllDaysBtn(id);
+  }
 }
 
 // Light the "All week" button only when every day for that row is on.
@@ -1578,7 +1592,7 @@ function onFieldChange(e) {
     // mirror to mobile chip
     const chip = document.querySelector(`#equip-cards .day-chip[data-id="${id}"][data-chip-day="${idx}"]`);
     if (chip) chip.classList.toggle('active', el.checked);
-    refreshAllDaysBtn(id);
+    syncDaysAfterToggle(id);
   } else {
     r[field] = el.value;
     // refresh hours-used readout if a meter field changed

@@ -68,7 +68,7 @@ Each row:
 
 }
 
-Rows whose `days` are all true can be collapsed in the UI into a single "on-site all week" cell (screen-only view state in `collapsedDayRows`, never persisted; auto-expanded for printing).
+Rows whose `days` are all true automatically collapse in the UI into a single "on-site all week" banner (however they got there — the "All" button or checking each day). Clicking the banner expands it back to checkboxes for editing; that temporary expand state lives in `editingDayRows` (screen-only, never persisted, auto-expanded for printing).
 
 ## How sync works
 
