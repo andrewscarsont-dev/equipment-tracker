@@ -73,7 +73,8 @@ Rows whose `days` are all true automatically collapse in the UI into a single "o
 ## How sync works
 
 - Frontend debounces saves (1.5s after last edit) then POSTs the full db (all jobs)  
-- Frontend auto-refreshes every 30s, but skips refresh if user is focused on any input or has a pending save — prevents typing collisions  
+- Frontend auto-refreshes every 30s, but skips refresh if user is focused on any input or has a pending save — prevents typing collisions. The refresh also re-checks for edits *after* its fetch resolves (via a `localEditSeq` counter) and bails rather than clobbering a change made while the fetch was in flight  
+- On page hide/close, a pending debounced save is flushed synchronously with `navigator.sendBeacon` so a quick edit-then-leave can't be lost  
 - Sync status pill in the header shows: Loading / Saving / Saved / Error  
 - Cloud-only — no localStorage fallback, no offline mode
 

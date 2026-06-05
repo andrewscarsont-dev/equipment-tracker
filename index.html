@@ -1669,6 +1669,7 @@ function applyMetaToInputs() {
 }
 
 function saveData() {
+  localEditSeq++;
   readMetaInputs();
   persistCurrentWeek();
   scheduleCloudSave();
@@ -1692,6 +1693,7 @@ function sanitizeRow(r) {
 // ── Cloud sync ──
 let saveTimer = null;
 let pendingSave = false;
+let localEditSeq = 0;   // bumped on every local edit so an in-flight refresh can detect it
 
 function setSyncStatus(status) {
   const pill = document.getElementById('sync-pill');
@@ -1713,6 +1715,26 @@ window.addEventListener('beforeunload', e => {
     e.returnValue = '';
   }
 });
+
+// If the page is hidden or closed while a debounced save is still pending (or a
+// POST is mid-flight that the browser may abort), flush it synchronously with a
+// beacon so a quick edit-then-leave can't be lost.
+function flushPendingSave() {
+  if (saveTimer === null && !pendingSave) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try {
+    readMetaInputs();
+    persistCurrentWeek();
+    propagateForward(store.currentWeek);
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/data', new Blob([JSON.stringify(db)], { type: 'application/json' }));
+      pendingSave = false;
+    }
+  } catch (err) {}
+}
+window.addEventListener('pagehide', flushPendingSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushPendingSave(); });
 
 async function cloudSave() {
   pendingSave = true;
@@ -1893,11 +1915,17 @@ async function cloudLoad() {
 }
 
 async function cloudRefresh() {
+  const seqAtStart = localEditSeq;
   try {
     const res = await fetch('/api/data');
     if (!res.ok) return;
     const data = await res.json();
     if (!data) return;
+    // The fetch is async. If the user edited (or started editing, or a save is
+    // now pending) while it was in flight, applying remote data here would wipe
+    // the unsaved change — bail and let the next cycle refresh instead.
+    if (localEditSeq !== seqAtStart || pendingSave || saveTimer !== null) return;
+    if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
     const activeJobId = db.currentJobId;
     const activeWeek = store.currentWeek;
     db = migrateToDb(data);
