@@ -866,13 +866,13 @@
         <th style="width:90px">Company</th>
         <th style="width:70px">Rental Start</th>
         <th style="width:70px">Est. Release</th>
+        <th class="day-cell" title="Saturday">Sa</th>
+        <th class="day-cell" title="Sunday">Su</th>
         <th class="day-cell" title="Monday">M</th>
         <th class="day-cell" title="Tuesday">T</th>
         <th class="day-cell" title="Wednesday">W</th>
         <th class="day-cell" title="Thursday">T</th>
         <th class="day-cell" title="Friday">F</th>
-        <th class="day-cell" title="Saturday">Sa</th>
-        <th class="day-cell" title="Sunday">Su</th>
         <th style="width:75px;text-align:right">Start Hrs</th>
         <th style="width:75px;text-align:right">End Hrs</th>
         <th style="width:70px;text-align:right">Hrs Used</th>
@@ -913,8 +913,8 @@
 </div>
 
 <script>
-const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const DAY_SHORT = ['M','T','W','T','F','S','S'];
+const DAY_NAMES = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
+const DAY_SHORT = ['Sa','Su','M','T','W','T','F'];
 let rows = [];
 
 // ── Clock ──
@@ -935,7 +935,7 @@ function setWeekDates(endDateStr) {
   let endDate = endDateStr ? new Date(endDateStr + 'T12:00:00') : null;
   if (!endDate || isNaN(endDate)) {
     endDate = new Date();
-    endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+    endDate.setDate(endDate.getDate() + ((5 - endDate.getDay() + 7) % 7)); // upcoming Friday
   }
 
   const start = new Date(endDate);
@@ -957,7 +957,7 @@ function setWeekDates(endDateStr) {
 // `store` always points at the active job, so the rest of the app keeps using
 // store.currentWeek / store.meta / store.weeks exactly as before.
 let db = {
-  version: 2,
+  version: 3,
   currentJobId: null,
   jobs: {}                  // { jobId: { id, meta, currentWeek, weeks } }
 };
@@ -1041,18 +1041,19 @@ function promptNewJob() {
   scheduleCloudSave();
 }
 
-function isoSaturdayForDate(d) {
-  const day = d.getDay(); // 0=Sun, 6=Sat
-  const sat = new Date(d);
-  sat.setDate(d.getDate() + (6 - day));
-  const y = sat.getFullYear();
-  const m = String(sat.getMonth() + 1).padStart(2, '0');
-  const dd = String(sat.getDate()).padStart(2, '0');
+function isoWeekEndForDate(d) {
+  // Week runs Sat→Fri; the week-ending date is the upcoming Friday (or today if Friday).
+  const day = d.getDay(); // 0=Sun ... 6=Sat
+  const fri = new Date(d);
+  fri.setDate(d.getDate() + ((5 - day + 7) % 7));
+  const y = fri.getFullYear();
+  const m = String(fri.getMonth() + 1).padStart(2, '0');
+  const dd = String(fri.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
 
 function defaultWeekEnd() {
-  return isoSaturdayForDate(new Date());
+  return isoWeekEndForDate(new Date());
 }
 
 function formatWeekLabel(iso) {
@@ -1070,12 +1071,12 @@ function rebuildWeekDropdown() {
   const sel = document.getElementById('week-select');
   if (!sel) return;
 
-  // Build set: last 9 Saturdays from "this week's Saturday" (covers ~2 months)
+  // Build set: last 9 week-endings from "this week's Friday" (covers ~2 months)
   // + any archived weeks (so older history isn't lost)
   // + the current week (in case it's outside both)
   const weekSet = new Set();
-  const todaySat = defaultWeekEnd(); // this week's Saturday in YYYY-MM-DD
-  const baseDate = new Date(todaySat + 'T12:00:00');
+  const todayEnd = defaultWeekEnd(); // this week's Friday in YYYY-MM-DD
+  const baseDate = new Date(todayEnd + 'T12:00:00');
   for (let i = 0; i < 9; i++) {
     const d = new Date(baseDate);
     d.setDate(baseDate.getDate() - 7 * i);
@@ -1118,7 +1119,7 @@ function promptNewWeek() {
     rebuildWeekDropdown();
     return;
   }
-  const iso = isoSaturdayForDate(d); // snap to Saturday
+  const iso = isoWeekEndForDate(d); // snap to Friday week-ending
   if (iso === store.currentWeek) {
     rebuildWeekDropdown();
     return;
@@ -1645,24 +1646,46 @@ function normalizeJob(j, fallbackId) {
   };
 }
 
+// v3 reorders each row's `days` array from Mon→Sun to Sat→Fri (week now runs
+// Sat→Fri). Runs once per source blob: any blob below v3 gets remapped, then the
+// db is stamped v3 so it never reorders twice.
+function remapDaysMonToSat(days) {
+  if (!Array.isArray(days) || days.length !== 7) return [false,false,false,false,false,false,false];
+  // old order: Mon,Tue,Wed,Thu,Fri,Sat,Sun  →  new: Sat,Sun,Mon,Tue,Wed,Thu,Fri
+  return [days[5], days[6], days[0], days[1], days[2], days[3], days[4]];
+}
+
+function remapDbDaysToSatFirst(dbObj) {
+  Object.values(dbObj.jobs).forEach(job => {
+    Object.values(job.weeks).forEach(wk => {
+      (wk.rows || []).forEach(r => { r.days = remapDaysMonToSat(r.days); });
+    });
+  });
+}
+
 // Accepts either the new multi-job shape ({ jobs }) or the legacy
-// single-project shape ({ currentWeek, meta, weeks }) and returns a v2 db.
+// single-project shape ({ currentWeek, meta, weeks }) and returns a v3 db.
 function migrateToDb(data) {
+  const needsDayRemap = !(data && data.version >= 3);
+  let result;
   if (data && data.jobs && typeof data.jobs === 'object' && Object.keys(data.jobs).length) {
     const jobs = {};
     Object.keys(data.jobs).forEach(id => { jobs[id] = normalizeJob(data.jobs[id], id); });
     let currentJobId = (data.currentJobId && jobs[data.currentJobId])
       ? data.currentJobId
       : Object.keys(jobs)[0];
-    return { version: 2, currentJobId, jobs };
+    result = { version: 3, currentJobId, jobs };
+  } else {
+    // legacy single-project blob → wrap in one job
+    const job = normalizeJob({
+      meta: data && data.meta,
+      currentWeek: data && data.currentWeek,
+      weeks: data && data.weeks
+    }, genJobId());
+    result = { version: 3, currentJobId: job.id, jobs: { [job.id]: job } };
   }
-  // legacy single-project blob → wrap in one job
-  const job = normalizeJob({
-    meta: data && data.meta,
-    currentWeek: data && data.currentWeek,
-    weeks: data && data.weeks
-  }, genJobId());
-  return { version: 2, currentJobId: job.id, jobs: { [job.id]: job } };
+  if (needsDayRemap) remapDbDaysToSatFirst(result);
+  return result;
 }
 
 // Auto-advance the active job: if its stored week is in the past, jump to the
@@ -1726,18 +1749,18 @@ async function cloudLoad() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data) {
-      const wasV2 = !!(data.jobs);            // already in multi-job shape?
+      const wasCurrent = !!(data.jobs) && data.version >= 3;  // multi-job AND Sat→Fri days?
       const advanced = applyCloudData(data);
       hadData = true;
-      // re-upload if we migrated an old blob, or advanced to a new week
-      shouldUpload = !wasV2 || advanced;
+      // re-upload if we migrated an old blob (shape or day-order), or advanced a week
+      shouldUpload = !wasCurrent || advanced;
     } else {
       shouldUpload = migrateLocalStorage();
       if (shouldUpload) {
         hadData = true;
       } else {
         const job = newJob('', defaultWeekEnd());
-        db = { version: 2, currentJobId: job.id, jobs: { [job.id]: job } };
+        db = { version: 3, currentJobId: job.id, jobs: { [job.id]: job } };
         setActiveJob(job.id);
       }
     }
@@ -1817,7 +1840,7 @@ function esc(s) {
   // seed a temporary empty job so the first render has something to point at;
   // cloudLoad() replaces db with whatever is in the cloud (migrating old shapes).
   const seed = newJob('', defaultWeekEnd());
-  db = { version: 2, currentJobId: seed.id, jobs: { [seed.id]: seed } };
+  db = { version: 3, currentJobId: seed.id, jobs: { [seed.id]: seed } };
   setActiveJob(seed.id);
   rebuildJobDropdown();
   rebuildWeekDropdown();
