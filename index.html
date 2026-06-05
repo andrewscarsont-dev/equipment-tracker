@@ -16,6 +16,7 @@
     --steel: #eeede9;
     --mid: #a8a7a2;
     --muted: #908f89;
+    --label: #5e5d57;   /* darker gray for small field labels — readable in daylight */
     --border: #d6d4ce;
     --accent: #c8261b;
     --accent-dim: #9a1810;
@@ -476,7 +477,7 @@
 
   .card-head .card-desc {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--white);
     background: transparent;
@@ -491,9 +492,9 @@
     gap: 8px;
     margin-top: 4px;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 0.05em;
+    font-size: 12px;
+    color: var(--label);
+    letter-spacing: 0.04em;
   }
 
   .card-head .card-sub span { white-space: nowrap; }
@@ -533,11 +534,11 @@
   .field-grid label {
     display: block;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 8px;
-    letter-spacing: 0.12em;
+    font-size: 11px;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 4px;
+    color: var(--label);
+    margin-bottom: 5px;
   }
 
   .field-grid input, .field-grid select {
@@ -545,7 +546,7 @@
     border: none;
     color: var(--white);
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
     width: 100%;
     outline: none;
@@ -591,10 +592,10 @@
   .days-chips-wrap label {
     display: block;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 8px;
-    letter-spacing: 0.12em;
+    font-size: 11px;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--label);
     margin-bottom: 6px;
   }
 
@@ -689,7 +690,7 @@
       margin-bottom: 14px;
     }
     .meta-field { padding: 10px 12px; }
-    .meta-field label { font-size: 8px; margin-bottom: 4px; }
+    .meta-field label { font-size: 11px; letter-spacing: 0.06em; color: var(--label); margin-bottom: 5px; }
     .meta-field input, .meta-field select { font-size: 16px; }
 
     /* week strip: stack label above grid */
